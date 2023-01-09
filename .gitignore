@@ -2,6 +2,7 @@ data/
 .ipynb_checkpoints
 .bin
 *.db
+.DS_Store
 
 *.parquet
 *.html
