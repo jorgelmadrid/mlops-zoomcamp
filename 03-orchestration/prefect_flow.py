@@ -1,6 +1,7 @@
 import pandas as pd
 import pickle
 
+from prefect.task_runners import SequentialTaskRunner
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.metrics import mean_squared_error
 
@@ -27,21 +28,19 @@ def read_dataframe(filename):
 
     categorical = ['PULocationID', 'DOLocationID']
     df[categorical] = df[categorical].astype(str)
-    
+
     return df
+
 
 @task
 def add_features(df_train, df_val):
-    # df_train = read_dataframe(train_path)
-    # df_val = read_dataframe(val_path)
-
     print(len(df_train))
     print(len(df_val))
 
     df_train['PU_DO'] = df_train['PULocationID'] + '_' + df_train['DOLocationID']
     df_val['PU_DO'] = df_val['PULocationID'] + '_' + df_val['DOLocationID']
 
-    categorical = ['PU_DO'] #'PULocationID', 'DOLocationID']
+    categorical = ['PU_DO']  # 'PULocationID', 'DOLocationID']
     numerical = ['trip_distance']
 
     dv = DictVectorizer()
@@ -99,7 +98,6 @@ def train_model_search(train, valid, y_val):
 @task
 def train_best_model(train, valid, y_val, dv):
     with mlflow.start_run():
-
         best_params = {
             'learning_rate': 0.09585355369315604,
             'max_depth': 30,
@@ -130,15 +128,19 @@ def train_best_model(train, valid, y_val, dv):
 
         mlflow.xgboost.log_model(booster, artifact_path="models_mlflow")
 
-@flow
-def main(train_path: str="./data/green_tripdata_2021-01.parquet",
-        val_path: str="./data/green_tripdata_2021-02.parquet"):
+
+@flow(task_runner=SequentialTaskRunner())
+def main(train_path: str = "./data/green_tripdata_2021-01.parquet",
+         val_path: str = "./data/green_tripdata_2021-02.parquet"):
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
     mlflow.set_experiment("nyc-taxi-experiment")
     X_train = read_dataframe(train_path)
     X_val = read_dataframe(val_path)
-    X_train, X_val, y_train, y_val, dv = add_features(X_train, X_val).result()
+    X_train, X_val, y_train, y_val, dv = add_features(X_train, X_val)
     train = xgb.DMatrix(X_train, label=y_train)
     valid = xgb.DMatrix(X_val, label=y_val)
     train_model_search(train, valid, y_val)
     train_best_model(train, valid, y_val, dv)
+
+
+main()
